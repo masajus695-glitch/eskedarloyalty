@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
@@ -18,10 +18,30 @@ export const Route = createFileRoute("/")({
 function Landing() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!loading && user) navigate({ to: "/app" });
   }, [loading, user, navigate]);
+
+  const handleShare = async () => {
+    const url = window.location.origin;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-warm text-primary-foreground">
@@ -47,6 +67,12 @@ function Landing() {
           <Button asChild size="lg" className="bg-gold text-primary hover:bg-gold/90 font-semibold">
             <Link to="/auth">Sign in or create account</Link>
           </Button>
+          <button
+            onClick={handleShare}
+            className="text-xs uppercase tracking-widest text-primary-foreground/60 hover:text-gold transition-colors"
+          >
+            {copied ? "Link copied!" : "Share this app"}
+          </button>
           <Link to="/staff" className="text-xs uppercase tracking-widest text-primary-foreground/60 hover:text-gold">
             Staff
           </Link>
