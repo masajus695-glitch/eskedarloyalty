@@ -92,6 +92,11 @@ function StaffPage() {
             </div>
           )}
         </div>
+        <div className="mt-6 text-center">
+          <Link to="/auth" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">
+            Customer sign in
+          </Link>
+        </div>
       </div>
     </main>
   );
