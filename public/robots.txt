@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /staff
+
+Sitemap: https://eskedarloyalty.lovable.app/sitemap.xml
