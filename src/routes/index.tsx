@@ -67,6 +67,12 @@ function Landing() {
           <Button asChild size="lg" className="bg-gold text-primary hover:bg-gold/90 font-semibold">
             <Link to="/auth">Sign in or create account</Link>
           </Button>
+          <button
+            onClick={handleShare}
+            className="text-xs uppercase tracking-widest text-primary-foreground/60 hover:text-gold transition-colors"
+          >
+            {copied ? "Link copied!" : "Share this app"}
+          </button>
           <Link to="/staff" className="text-xs uppercase tracking-widest text-primary-foreground/60 hover:text-gold">
             Staff
           </Link>
