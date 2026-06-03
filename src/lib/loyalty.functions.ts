@@ -4,6 +4,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const MAX_BEANS = 5;
+const GENERIC_ERROR = "Something went wrong. Please try again.";
+
+function dbFail(context: string, error: unknown): never {
+  console.error(`[loyalty:${context}]`, error);
+  throw new Error(GENERIC_ERROR);
+}
 
 export const getMyProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -14,9 +20,8 @@ export const getMyProfile = createServerFn({ method: "GET" })
       .select("display_name, beans, total_redeemed")
       .eq("user_id", userId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) dbFail("getMyProfile", error);
     if (!data) {
-      // Fallback: ensure profile exists
       await supabaseAdmin.from("profiles").insert({ user_id: userId });
       return { display_name: null, beans: 0, total_redeemed: 0 };
     }
@@ -27,7 +32,10 @@ export const generateStaffToken = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ pin: z.string().min(1).max(64) }).parse(input))
   .handler(async ({ data }) => {
     const expected = process.env.STAFF_PIN;
-    if (!expected) throw new Error("Staff PIN not configured");
+    if (!expected) {
+      console.error("[loyalty:generateStaffToken] STAFF_PIN not configured");
+      throw new Error("Invalid PIN");
+    }
     if (data.pin !== expected) throw new Error("Invalid PIN");
 
     const { data: row, error } = await supabaseAdmin
@@ -35,7 +43,7 @@ export const generateStaffToken = createServerFn({ method: "POST" })
       .insert({})
       .select("token, expires_at")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) dbFail("generateStaffToken", error);
     return { token: row.token as string, expiresAt: row.expires_at as string };
   });
 
@@ -50,12 +58,11 @@ export const scanToken = createServerFn({ method: "POST" })
       .select("token, used_at, expires_at")
       .eq("token", data.token)
       .maybeSingle();
-    if (tErr) throw new Error(tErr.message);
+    if (tErr) dbFail("scanToken:lookup", tErr);
     if (!tok) throw new Error("Invalid code");
     if (tok.used_at) throw new Error("This code has already been used");
     if (new Date(tok.expires_at) < new Date()) throw new Error("This code has expired");
 
-    // Mark used atomically (guard against races)
     const { data: claimed, error: cErr } = await supabaseAdmin
       .from("scan_tokens")
       .update({ used_at: new Date().toISOString(), used_by: userId })
@@ -63,20 +70,18 @@ export const scanToken = createServerFn({ method: "POST" })
       .is("used_at", null)
       .select("token")
       .maybeSingle();
-    if (cErr) throw new Error(cErr.message);
+    if (cErr) dbFail("scanToken:claim", cErr);
     if (!claimed) throw new Error("This code has already been used");
 
-    // Increment beans (cap at MAX_BEANS)
     const { data: prof, error: pErr } = await supabaseAdmin
       .from("profiles")
       .select("beans")
       .eq("user_id", userId)
       .maybeSingle();
-    if (pErr) throw new Error(pErr.message);
+    if (pErr) dbFail("scanToken:profile", pErr);
 
     const current = prof?.beans ?? 0;
     if (current >= MAX_BEANS) {
-      // Already at free coffee — refund the token claim
       return { beans: current, message: "You already have a free coffee waiting! Redeem it first." };
     }
     const next = Math.min(current + 1, MAX_BEANS);
@@ -84,7 +89,7 @@ export const scanToken = createServerFn({ method: "POST" })
     const { error: uErr } = await supabaseAdmin
       .from("profiles")
       .upsert({ user_id: userId, beans: next, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-    if (uErr) throw new Error(uErr.message);
+    if (uErr) dbFail("scanToken:update", uErr);
 
     return {
       beans: next,
@@ -103,7 +108,7 @@ export const redeemFreeCoffee = createServerFn({ method: "POST" })
       .select("beans, total_redeemed")
       .eq("user_id", userId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) dbFail("redeem:lookup", error);
     if (!prof || prof.beans < MAX_BEANS) {
       throw new Error("You don't have a free coffee to redeem yet");
     }
@@ -111,7 +116,7 @@ export const redeemFreeCoffee = createServerFn({ method: "POST" })
       .from("profiles")
       .update({ beans: 0, total_redeemed: (prof.total_redeemed ?? 0) + 1, updated_at: new Date().toISOString() })
       .eq("user_id", userId);
-    if (uErr) throw new Error(uErr.message);
+    if (uErr) dbFail("redeem:update", uErr);
     await supabaseAdmin.from("redemptions").insert({ user_id: userId });
     return { beans: 0 };
   });
